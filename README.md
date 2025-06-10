@@ -73,7 +73,7 @@ graph TB
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/podcast-generator-mcp.git
+git clone https://github.com/adamanz/podcast-generator-mcp.git
 cd podcast-generator-mcp
 
 # Install dependencies
@@ -231,7 +231,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - FastMCP Docs: [gofastmcp.com](https://gofastmcp.com)
 - ElevenLabs: [elevenlabs.io/docs](https://elevenlabs.io/docs)
-- Issues: [GitHub Issues](https://github.com/YOUR_USERNAME/fastmcp-podcast-generator/issues)
+- Issues: [GitHub Issues](https://github.com/adamanz/podcast-generator-mcp/issues)
 
 ---
 
