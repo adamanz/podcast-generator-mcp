@@ -1,0 +1,16 @@
+# Podcast Generator MCP Server Requirements
+fastmcp>=2.0.0
+elevenlabs>=1.0.0
+aiohttp>=3.8.0
+
+# File format support
+pypdf2>=3.0.0         # PDF file support
+python-docx>=0.8.11   # Word document support
+markdown>=3.4.0       # Markdown processing
+beautifulsoup4>=4.12.0 # HTML parsing
+
+# Audio processing
+pydub>=0.25.0         # Advanced audio manipulation
+
+# Optional but recommended
+python-dotenv>=1.0.0  # For .env file support

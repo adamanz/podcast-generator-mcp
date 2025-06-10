@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "podcast-generator": {
+      "command": "python",
+      "args": ["path/to/podcast_mcp_server.py"],
+      "env": {
+        "ELEVENLABS_API_KEY": "your-elevenlabs-api-key-here"
+      }
+    }
+  }
+}
