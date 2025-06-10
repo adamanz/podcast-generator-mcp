@@ -15,6 +15,13 @@ import re
 
 from fastmcp import FastMCP, Context
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, will use system env vars
+
 # You'll need to install these
 # uv pip install elevenlabs aiohttp pypdf2 python-docx markdown beautifulsoup4 pydub
 

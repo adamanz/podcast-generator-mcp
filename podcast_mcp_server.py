@@ -13,6 +13,13 @@ from pathlib import Path
 from fastmcp import FastMCP, Context
 from fastmcp.types import TextContent
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, will use system env vars
+
 # You'll need to install these
 # uv pip install elevenlabs aiohttp
 
@@ -78,7 +85,17 @@ def get_recommended_voice_pairs() -> List[Dict[str, str]]:
         {"host": "Dorothy", "guest": "Clyde", "description": "Mature female host with casual male guest"}
     ]
 
-@mcp.prompt
+@mcp.prompt(
+    name="podcast_script_prompt",
+    description="Generate an engaging podcast script with customizable style and personalities",
+    arguments=[
+        {"name": "topic", "description": "The main topic for the podcast episode", "required": True},
+        {"name": "duration_minutes", "description": "Target duration in minutes (3-15 recommended)", "required": False},
+        {"name": "style", "description": "Podcast style: conversational, interview, educational, debate", "required": False},
+        {"name": "host_personality", "description": "Description of the host's personality traits", "required": False},
+        {"name": "guest_personality", "description": "Description of the guest's personality traits", "required": False}
+    ]
+)
 def podcast_script_prompt(
     topic: str,
     duration_minutes: int = 5,
@@ -520,7 +537,13 @@ async def generate_full_podcast(
         "success": bool(final_path)
     }
 
-@mcp.prompt
+@mcp.prompt(
+    name="podcast_topic_suggestions",
+    description="Generate 5 engaging podcast topic ideas with hooks and talking points",
+    arguments=[
+        {"name": "genre", "description": "Genre for topics: technology, science, business, health, culture, etc.", "required": False}
+    ]
+)
 def podcast_topic_suggestions(genre: str = "technology") -> str:
     """Generate engaging podcast topic suggestions"""
     return f"""Suggest 5 engaging podcast topics in the {genre} genre.
@@ -534,7 +557,13 @@ For each topic, provide:
 
 Format as a numbered list with clear structure. Make each topic feel fresh and timely."""
 
-@mcp.prompt
+@mcp.prompt(
+    name="improve_podcast_dialogue",
+    description="Enhance existing podcast dialogue with natural speech patterns and emotions",
+    arguments=[
+        {"name": "dialogue_text", "description": "The dialogue text to improve", "required": True}
+    ]
+)
 def improve_podcast_dialogue(dialogue_text: str) -> str:
     """Improve podcast dialogue to make it more engaging"""
     return f"""Improve this podcast dialogue to make it more natural and engaging:
@@ -550,6 +579,57 @@ Guidelines:
 6. Add personality quirks to each speaker
 
 Return the improved dialogue in the same format."""
+
+@mcp.prompt(
+    name="podcast_series_workflow",
+    description="Create a multi-episode podcast series plan with consistent themes and progression",
+    arguments=[
+        {"name": "series_topic", "description": "Overall topic for the podcast series", "required": True},
+        {"name": "num_episodes", "description": "Number of episodes to plan (3-10)", "required": True},
+        {"name": "target_audience", "description": "Description of the target audience", "required": False},
+        {"name": "series_style", "description": "Consistent style across episodes", "required": False}
+    ]
+)
+def podcast_series_workflow(
+    series_topic: str,
+    num_episodes: int = 6,
+    target_audience: str = "general audience interested in learning",
+    series_style: str = "educational with conversational tone"
+) -> str:
+    """Create a structured plan for a podcast series"""
+    return f"""Design a {num_episodes}-episode podcast series about "{series_topic}".
+
+Target Audience: {target_audience}
+Series Style: {series_style}
+
+For the series, provide:
+
+1. Series Overview:
+   - Compelling series title
+   - Series description (2-3 sentences)
+   - Key themes and learning objectives
+   - Ideal host/guest dynamic
+
+2. Episode Breakdown:
+   For each episode, include:
+   - Episode number and title
+   - Specific focus/subtopic
+   - Key questions to explore
+   - Guest expertise needed
+   - Connection to previous/next episodes
+   - One unique hook or revelation
+
+3. Series Arc:
+   - How topics build on each other
+   - Recurring segments or features
+   - Series finale payoff
+
+4. Production Notes:
+   - Recommended host/guest voice pairings
+   - Music/tone suggestions
+   - Engagement strategies
+
+Create a cohesive series that keeps listeners coming back."""
 
 # Resources for help and examples
 @mcp.resource("help://quickstart")
