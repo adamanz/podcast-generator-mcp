@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Podcast Generator MCP Server - Emotion-Aware Version
-Properly handles emotional cues like [laughing] without speaking them
+Enhanced Podcast Generator MCP Server - Fixed Version
+With robust script parsing and guaranteed different voices
 """
 
 import json
@@ -24,23 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize the MCP server
 server = Server("podcast-generator-enhanced")
-
-
-# Emotion to sound mappings
-EMOTION_SOUNDS = {
-    "laughing": ["haha", "hehe", "ahaha", "ehehe"],
-    "sighing": ["*sigh*", "*deep breath*"],
-    "gasping": ["*gasp*", "oh!", "ah!"],
-    "chuckling": ["heh", "hmm"],
-    "crying": ["*sniff*", "*sob*"],
-    "thinking": ["hmm", "uhh", "let me see"],
-    "surprised": ["oh!", "wow!", "what?!"],
-    "confused": ["huh?", "what?", "hmm?"],
-    "excited": ["yes!", "oh wow!", "amazing!"],
-    "angry": ["ugh!", "argh!", "grr!"],
-    "nervous": ["um", "uh", "err"],
-    "clearing throat": ["*ahem*", "*cough*"]
-}
 
 
 # Advanced podcast formats and styles
@@ -140,27 +123,10 @@ DEFAULT_VOICE_POOL = [
 ]
 
 
-def process_emotional_text(text: str, emotion: str) -> Tuple[str, Optional[str]]:
-    """
-    Process text with emotional cues.
-    Returns (cleaned_text, emotional_prefix)
-    """
-    # Remove emotion tags from text
-    text = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', text).strip()
-    
-    # Get emotional sound/prefix if applicable
-    emotional_prefix = None
-    if emotion in EMOTION_SOUNDS:
-        emotional_prefix = random.choice(EMOTION_SOUNDS[emotion])
-    
-    return text, emotional_prefix
-
-
 def parse_script_robust(script: str) -> List[Dict[str, str]]:
     """
     Robustly parse various script formats into dialogue segments.
     Handles markdown, plain text, and various formatting styles.
-    Properly extracts and removes emotion tags.
     """
     dialogue_segments = []
     
@@ -184,64 +150,39 @@ def parse_script_robust(script: str) -> List[Dict[str, str]]:
             continue
             
         # Try to detect speaker patterns
-        # Pattern 1: "Speaker [emotion]: Text"
+        # Pattern 1: "Speaker: Text"
         speaker_match = re.match(r'^([A-Za-z\s\-\'\.]+?)(?:\s*\[([^\]]+)\])?\s*:\s*(.+)$', line)
         
         if speaker_match:
             # Save previous segment if exists
             if current_speaker and current_text:
-                combined_text = ' '.join(current_text)
-                # Check for inline emotions in the text
-                inline_emotion_match = re.search(r'\[([^\]]+)\]', combined_text)
-                if inline_emotion_match:
-                    current_speaker['emotion'] = inline_emotion_match.group(1).lower()
-                    combined_text = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', combined_text).strip()
-                
                 dialogue_segments.append({
                     'speaker': current_speaker['name'],
-                    'text': combined_text,
+                    'text': ' '.join(current_text),
                     'emotion': current_speaker.get('emotion', 'neutral')
                 })
                 current_text = []
             
             # Start new segment
             speaker_name = speaker_match.group(1).strip()
-            emotion = speaker_match.group(2).lower() if speaker_match.group(2) else 'neutral'
+            emotion = speaker_match.group(2) if speaker_match.group(2) else 'neutral'
             text = speaker_match.group(3).strip()
-            
-            # Check for emotion tags within the text itself
-            text_emotion_match = re.search(r'\[([^\]]+)\]', text)
-            if text_emotion_match:
-                emotion = text_emotion_match.group(1).lower()
-                text = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', text).strip()
             
             current_speaker = {
                 'name': speaker_name,
-                'emotion': emotion
+                'emotion': emotion.lower()
             }
             current_text = [text] if text else []
         
         # Pattern 2: Continuation of previous speaker's text
         elif current_speaker and line:
-            # Check for inline emotions
-            inline_emotion = re.search(r'\[([^\]]+)\]', line)
-            if inline_emotion:
-                current_speaker['emotion'] = inline_emotion.group(1).lower()
-                line = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', line).strip()
             current_text.append(line)
     
     # Don't forget the last segment
     if current_speaker and current_text:
-        combined_text = ' '.join(current_text)
-        # Final check for inline emotions
-        inline_emotion_match = re.search(r'\[([^\]]+)\]', combined_text)
-        if inline_emotion_match:
-            current_speaker['emotion'] = inline_emotion_match.group(1).lower()
-            combined_text = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', combined_text).strip()
-            
         dialogue_segments.append({
             'speaker': current_speaker['name'],
-            'text': combined_text,
+            'text': ' '.join(current_text),
             'emotion': current_speaker.get('emotion', 'neutral')
         })
     
@@ -252,19 +193,12 @@ def parse_script_robust(script: str) -> List[Dict[str, str]]:
         for i, para in enumerate(paragraphs):
             para = para.strip()
             if para:
-                # Check for emotions in paragraph
-                emotion = 'neutral'
-                emotion_match = re.search(r'\[([^\]]+)\]', para)
-                if emotion_match:
-                    emotion = emotion_match.group(1).lower()
-                    para = re.sub(r'\s*\[([^\]]+)\]\s*', ' ', para).strip()
-                
                 # Assign alternating speakers
                 speaker = "Speaker 1" if i % 2 == 0 else "Speaker 2"
                 dialogue_segments.append({
                     'speaker': speaker,
                     'text': para,
-                    'emotion': emotion
+                    'emotion': 'neutral'
                 })
     
     return dialogue_segments
@@ -336,6 +270,7 @@ def ensure_different_voices(speakers: List[str], available_voices: List[Dict]) -
     
     return voice_assignments
 
+
 def add_speaker_introductions(dialogue_segments: List[Dict[str, str]], voice_assignments: Dict[str, Tuple[str, str]]) -> List[Dict[str, str]]:
     """
     Add natural speaker introductions at the beginning of the podcast.
@@ -402,7 +337,6 @@ def get_enhanced_voice_options():
         },
         "voice_settings": {
             "emotional_presets": {
-                # Voice settings for different emotions
                 "excited": {"stability": 0.3, "similarity_boost": 0.7, "style": 0.8},
                 "serious": {"stability": 0.7, "similarity_boost": 0.5, "style": 0.3},
                 "warm": {"stability": 0.5, "similarity_boost": 0.6, "style": 0.6},
@@ -411,15 +345,7 @@ def get_enhanced_voice_options():
                 "casual": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5},
                 "friendly": {"stability": 0.5, "similarity_boost": 0.6, "style": 0.6},
                 "enthusiastic": {"stability": 0.4, "similarity_boost": 0.7, "style": 0.7},
-                "neutral": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5},
-                "laughing": {"stability": 0.2, "similarity_boost": 0.8, "style": 0.9},
-                "sighing": {"stability": 0.7, "similarity_boost": 0.4, "style": 0.3},
-                "nervous": {"stability": 0.4, "similarity_boost": 0.6, "style": 0.5},
-                "angry": {"stability": 0.3, "similarity_boost": 0.8, "style": 0.8},
-                "surprised": {"stability": 0.3, "similarity_boost": 0.7, "style": 0.8},
-                "confused": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5},
-                "crying": {"stability": 0.6, "similarity_boost": 0.4, "style": 0.2},
-                "thinking": {"stability": 0.6, "similarity_boost": 0.4, "style": 0.4}
+                "neutral": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5}
             }
         }
     }
@@ -487,10 +413,9 @@ Speaker {i+1} - {speaker['role']}:
 IMPORTANT FORMATTING RULES:
 1. Each line of dialogue MUST start with the speaker name followed by a colon
 2. Use simple format: "Speaker Name: Dialogue text"
-3. For emotions, place them in brackets BEFORE the colon: "Speaker Name [emotion]: Dialogue text"
-4. Common emotions: [laughing], [sighing], [surprised], [thinking], [excited], [nervous]
-5. Do NOT include stage directions or emotion descriptions in the spoken text
-6. When someone laughs, just put [laughing] - don't write "haha" in the dialogue
+3. Optionally add emotions in brackets: "Speaker Name [emotion]: Dialogue text"
+4. Do NOT use markdown formatting (no **, *, #, etc.)
+5. Speakers should introduce themselves naturally early in the conversation
 
 CONTENT STRUCTURE:
 1. INTRODUCTION ({segments['intro']} minute):
@@ -514,7 +439,7 @@ DIALOGUE REQUIREMENTS:
 - Include verbal fillers occasionally (um, uh, you know) for realism
 - Add interruptions, overlapping thoughts, and natural reactions
 - Show personality through word choice and speech patterns
-- Use emotions in brackets, NOT in the spoken text
+- Include relevant emotions (laughter, surprise, concern) where appropriate
 - Vary sentence length and structure for each speaker
 - Use contemporary references and relatable examples
 
@@ -527,8 +452,6 @@ Example:
 Host: Welcome everyone to today's show! I'm incredibly excited about our topic.
 Expert [laughing]: Thanks for having me! You know, I was just thinking about this yesterday.
 Host [curious]: Really? What sparked that thought?
-
-CRITICAL: When indicating emotions like laughter, ONLY use the [emotion] tag. Do NOT write out the laughter as "haha" or describe it in the dialogue.
 
 Remember to make this feel like a real conversation, not a scripted reading. Include moments of genuine curiosity, surprise, humor, and insight that would naturally occur when intelligent people discuss {topic}.
 """
@@ -583,7 +506,6 @@ def parse_voice_library_search(query: str) -> Dict[str, Any]:
     
     return search_params
 
-
 @server.list_resources()
 async def list_resources() -> list[types.Resource]:
     """List available resources."""
@@ -599,12 +521,6 @@ async def list_resources() -> list[types.Resource]:
             name="Podcast Formats",
             description="Available podcast formats and styles",
             mimeType="application/json"
-        ),
-        types.Resource(
-            uri="podcast://emotions",
-            name="Emotion Guide",
-            description="Guide for using emotions in scripts",
-            mimeType="text/markdown"
         ),
         types.Resource(
             uri="podcast://prompt-guide",
@@ -624,119 +540,56 @@ async def read_resource(uri: types.AnyUrl) -> str:
     elif str(uri) == "podcast://formats":
         return json.dumps(PODCAST_FORMATS, indent=2)
     
-    elif str(uri) == "podcast://emotions":
-        guide = """# Emotion Guide for Podcast Scripts
-
-## How to Use Emotions
-
-Place emotions in brackets BEFORE the colon in your script:
-
-```
-Host [excited]: This is amazing news!
-Guest [laughing]: I know, right? I couldn't believe it myself!
-Host [thoughtful]: But what does this mean for the industry?
-```
-
-## Available Emotions
-
-### Basic Emotions
-- **[laughing]** - Natural laughter (not spoken "haha")
-- **[sighing]** - Expresses fatigue, relief, or resignation  
-- **[surprised]** - Shock or amazement
-- **[confused]** - Uncertainty or puzzlement
-- **[excited]** - High energy and enthusiasm
-- **[nervous]** - Anxiety or uncertainty
-- **[angry]** - Frustration or anger
-- **[crying]** - Sadness or being moved
-
-### Conversational Emotions
-- **[thinking]** - Thoughtful pause
-- **[clearing throat]** - Getting attention or nervousness
-- **[chuckling]** - Light laughter
-- **[gasping]** - Sudden realization or shock
-
-### Voice Modulation
-- **[warm]** - Friendly, welcoming tone
-- **[serious]** - Grave, important tone
-- **[casual]** - Relaxed, informal
-- **[contemplative]** - Deep, reflective
-
-## Examples
-
-### Natural Laughter
-```
-WRONG: Host: Haha, that's hilarious!
-RIGHT: Host [laughing]: That's hilarious!
-```
-
-### Emotional Transitions
-```
-Expert [confident]: The data clearly shows improvement.
-Expert [surprised]: Wait, these new numbers are incredible!
-Expert [excited]: This changes everything!
-```
-
-### Subtle Emotions
-```
-Guest [sighing]: It's been a long journey to get here.
-Host [warm]: I can imagine. Tell us more about that.
-```
-
-## Tips
-1. Don't overuse emotions - sprinkle them naturally
-2. Emotions should enhance, not distract
-3. Match emotions to content and personality
-4. Use variety for engaging dialogue
-"""
-        return guide.strip()
-    
     elif str(uri) == "podcast://prompt-guide":
         guide = """# Enhanced Podcast Generator Prompting Guide
 
-## Emotion-Aware Improvements
+## Key Fixes in This Version
 
-The enhanced generator now properly handles emotions:
-- **[laughing]** produces actual laughter, not spoken "haha"
-- Emotions are processed and removed from spoken text
-- Voice settings adjust based on emotions
-- Natural emotional sounds are added
+### 1. Voice Diversity Guaranteed
+- Each speaker automatically gets a different voice
+- Intelligent role-based voice matching
+- Fallback system ensures variety even with many speakers
+
+### 2. Robust Script Parsing
+- Handles markdown formatting
+- Supports multiple dialogue formats
+- Removes formatting artifacts
+- Fallback parsing for edge cases
+
+### 3. Automatic Introductions
+- Speakers introduce themselves naturally
+- Only added if not already present
+- Context-appropriate greetings
+
+## Script Format Requirements
+
+Use this simple format for best results:
+```
+Host: Welcome to our show!
+Guest [excited]: Thanks for having me!
+Host [curious]: Tell us about your work.
+```
+
+The parser handles:
+- "Speaker: Text" format
+- "Speaker [emotion]: Text" format
+- Multi-line dialogue
+- Various punctuation styles
+
+## Voice Assignment
+
+Voices are automatically assigned based on:
+1. Speaker role (Host → warm voice, Expert → authoritative)
+2. Gender diversity
+3. Age variation
+4. Personality matching
 
 ## Best Practices
 
-### Script Format
-```
-Host: Welcome to our show!
-Guest [excited]: I'm thrilled to be here!
-Host [laughing]: Your enthusiasm is contagious!
-Guest: Let's dive into today's topic.
-```
-
-### Common Mistakes to Avoid
-1. ❌ Writing out laughter: "Host: Haha, that's funny!"
-2. ❌ Stage directions: "Host: (walks to podium) Welcome!"
-3. ❌ Describing emotions: "Host: I'm laughing so hard right now!"
-
-### Correct Usage
-1. ✅ Use brackets: "Host [laughing]: That's funny!"
-2. ✅ Natural flow: "Host [sighing]: It's been a long day."
-3. ✅ Subtle emotions: "Expert [thoughtful]: Let me consider that."
-
-## Advanced Features
-
-### Emotional Arcs
-Build emotional journeys:
-```
-Host [curious]: What started your interest?
-Guest [nostalgic]: It goes back to my childhood...
-Guest [excited]: Then I discovered this amazing technique!
-Host [impressed]: That's incredible!
-```
-
-### Personality Matching
-Emotions work with voice personalities:
-- Warm hosts: [laughing], [welcoming], [encouraging]
-- Serious experts: [thoughtful], [analytical], [concerned]
-- Energetic guests: [excited], [animated], [enthusiastic]
+1. Keep speaker names consistent
+2. Use emotions in brackets for variety
+3. Let speakers introduce themselves naturally
+4. Avoid markdown formatting in scripts
 """
         return guide.strip()
     
@@ -750,7 +603,7 @@ async def list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="generate_enhanced_script",
-            description="Generate an enhanced podcast script with natural dialogue and emotional cues",
+            description="Generate an enhanced podcast script with natural dialogue and personality",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -788,13 +641,13 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="create_enhanced_audio",
-            description="Convert script to audio with emotional awareness - properly handles [laughing] etc.",
+            description="Convert script to audio with advanced voice options and emotional variations",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "script": {
                         "type": "string",
-                        "description": "The podcast script with emotions in brackets"
+                        "description": "The podcast script"
                     },
                     "output_filename": {
                         "type": "string",
@@ -862,6 +715,7 @@ async def list_tools() -> list[types.Tool]:
         )
     ]
 
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.TextContent]:
     """Handle tool calls."""
@@ -898,9 +752,12 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.T
 {prompt}
 
 ---
-Note: This prompt is optimized for emotional awareness. The LLM will generate scripts with emotions in brackets like [laughing], which will be converted to actual laughter sounds, not spoken text.
+Note: This prompt is optimized for advanced LLMs like Claude or GPT-4. The LLM should generate a natural, engaging podcast script based on this prompt. The script will include realistic dialogue, personality-driven speaking styles, and format-appropriate content structure.
 
-IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
+IMPORTANT: The generated script should use simple formatting:
+- Each line: "Speaker Name: Dialogue"
+- With emotions: "Speaker Name [emotion]: Dialogue"
+- No markdown formatting"""
         )]
 
     elif name == "create_enhanced_audio":
@@ -939,7 +796,7 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                 # Create voice name to ID mapping
                 voice_name_to_id = {v.name.lower(): v.voice_id for v in available_voices}
                 
-                # Parse script with robust parser (now handles emotions properly)
+                # Parse script with robust parser
                 dialogue_segments = parse_script_robust(script)
                 
                 if not dialogue_segments:
@@ -1044,19 +901,16 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                 output_dir = os.path.expanduser("~/Desktop/podcast_output")
                 os.makedirs(output_dir, exist_ok=True)
                 
-                # Generate audio segments with emotion handling
+                # Generate audio segments
                 audio_segments = []
                 segment_files = []
                 
-                logger.info(f"Generating {len(dialogue_segments)} audio segments with emotion awareness...")
+                logger.info(f"Generating {len(dialogue_segments)} audio segments...")
                 
                 for i, segment in enumerate(dialogue_segments):
                     speaker = segment['speaker']
-                    original_text = segment['text']
+                    text = segment['text']
                     emotion = segment.get('emotion', 'neutral')
-                    
-                    # Process emotional text - remove emotion tags and get prefix
-                    clean_text, emotional_prefix = process_emotional_text(original_text, emotion)
                     
                     # Get voice for this speaker
                     voice_info = final_voice_assignments.get(speaker, {
@@ -1067,64 +921,36 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                     # Get emotional settings
                     emotion_presets = get_enhanced_voice_options()["voice_settings"]["emotional_presets"]
                     
-                    # Use emotion preset if available
+                    # Use emotion from segment or detect from text
                     if emotion in emotion_presets:
                         voice_settings = emotion_presets[emotion]
-                    # Detect emotion from text if not specified
-                    elif '!' in clean_text and '?' not in clean_text:
+                    elif '!' in text and '?' not in text:
                         voice_settings = emotion_presets["excited"]
-                    elif '?' in clean_text and any(word in clean_text.lower() for word in ['how', 'why', 'what']):
+                    elif '?' in text:
                         voice_settings = emotion_presets["contemplative"]
-                    elif any(phrase in clean_text.lower() for phrase in ['thank', 'welcome', 'great to']):
+                    elif any(phrase in text.lower() for phrase in ['thank', 'welcome', 'great to']):
                         voice_settings = emotion_presets["warm"]
                     else:
                         voice_settings = emotion_presets["casual"]
                     
-                    # Combine emotional prefix with text if applicable
-                    if emotional_prefix and emotion in ['laughing', 'sighing', 'gasping', 'crying']:
-                        # For these emotions, speak the sound then the text
-                        final_text = f"{emotional_prefix} {clean_text}"
-                    elif emotional_prefix and emotion in ['thinking', 'nervous', 'confused']:
-                        # For these, integrate the sound naturally
-                        final_text = f"{emotional_prefix}, {clean_text}"
-                    else:
-                        # For other emotions, just use the clean text
-                        final_text = clean_text
-                    
                     # Generate audio for this segment
                     try:
-                        logger.info(f"Segment {i+1}/{len(dialogue_segments)}: {speaker} [{emotion}] ({voice_info['name']})")
+                        logger.info(f"Generating segment {i+1}/{len(dialogue_segments)}: {speaker} ({voice_info['name']})")
                         
-                        # For laughing, we might want to generate just laughter sometimes
-                        if emotion == 'laughing' and len(clean_text.split()) < 5:
-                            # Short text with laughing - emphasize the laugh
-                            segment_audio = client.text_to_speech.convert(
-                                text=f"Ha ha ha! {clean_text}",
-                                voice_id=voice_info['id'],
-                                voice_settings=VoiceSettings(
-                                    stability=voice_settings["stability"],
-                                    similarity_boost=voice_settings["similarity_boost"],
-                                    style=voice_settings.get("style", 0.5),
-                                    use_speaker_boost=True
-                                ),
-                                model_id="eleven_turbo_v2_5"
-                            )
-                        else:
-                            # Normal generation with processed text
-                            segment_audio = client.text_to_speech.convert(
-                                text=final_text,
-                                voice_id=voice_info['id'],
-                                voice_settings=VoiceSettings(
-                                    stability=voice_settings["stability"],
-                                    similarity_boost=voice_settings["similarity_boost"],
-                                    style=voice_settings.get("style", 0.5),
-                                    use_speaker_boost=True
-                                ),
-                                model_id="eleven_turbo_v2_5"
-                            )
+                        segment_audio = client.text_to_speech.convert(
+                            text=text,
+                            voice_id=voice_info['id'],
+                            voice_settings=VoiceSettings(
+                                stability=voice_settings["stability"],
+                                similarity_boost=voice_settings["similarity_boost"],
+                                style=voice_settings.get("style", 0.5),
+                                use_speaker_boost=True
+                            ),
+                            model_id="eleven_turbo_v2_5"
+                        )
                         
                         # Save individual segment
-                        segment_filename = f"segment_{i:03d}_{speaker.lower().replace(' ', '_')}_{emotion}.mp3"
+                        segment_filename = f"segment_{i:03d}_{speaker.lower().replace(' ', '_')}.mp3"
                         segment_path = os.path.join(output_dir, segment_filename)
                         
                         with open(segment_path, "wb") as f:
@@ -1136,10 +962,8 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                             'speaker': speaker,
                             'voice': voice_info['name'],
                             'emotion': emotion,
-                            'original_text': original_text,
-                            'processed_text': final_text,
                             'file': segment_path,
-                            'text_length': len(clean_text)
+                            'text_length': len(text)
                         })
                         
                     except Exception as segment_error:
@@ -1149,7 +973,8 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                 # Add sound effects if requested
                 if include_sound_effects and len(segment_files) > 0:
                     try:
-                        # Could add intro/outro music here
+                        # Note: Sound effects generation would go here
+                        # For now, we'll skip this as it requires additional API
                         pass
                     except Exception as sfx_error:
                         logger.warning(f"Could not generate sound effects: {str(sfx_error)}")
@@ -1171,49 +996,32 @@ IMPORTANT: Emotions in brackets are processed and removed from spoken text."""
                     with open(output_path, "wb") as f:
                         f.write(combined_audio_data)
                     
-                    # Generate detailed report
+                    # Generate voice cast summary
                     voice_cast = {}
-                    emotion_summary = {}
-                    
-                    for segment in audio_segments:
-                        speaker = segment['speaker']
-                        voice_cast[speaker] = segment['voice']
-                        
-                        emotion = segment['emotion']
-                        if emotion not in emotion_summary:
-                            emotion_summary[emotion] = 0
-                        emotion_summary[emotion] += 1
+                    for speaker, voice_info in final_voice_assignments.items():
+                        voice_cast[speaker] = voice_info['name']
                     
                     # Count unique voices used
                     unique_voices_used = len(set(v['id'] for v in final_voice_assignments.values()))
                     
                     result_message = f"""
-✅ Enhanced podcast created with emotion awareness!
+✅ Enhanced podcast created successfully!
 
 📁 Output: {output_path}
 
 🎭 Voice Cast ({unique_voices_used} different voices):
 {chr(10).join([f"  • {speaker}: {voice}" for speaker, voice in voice_cast.items()])}
 
-😊 Emotional Distribution:
-{chr(10).join([f"  • {emotion}: {count} segments" for emotion, count in sorted(emotion_summary.items())])}
-
 📊 Statistics:
 - Total Segments: {len(audio_segments)}
 - Estimated Duration: ~{sum(seg['text_length'] for seg in audio_segments) // 150} minutes
 - File Size: {os.path.getsize(output_path) / 1024 / 1024:.1f} MB
 
-🎯 Emotion Processing:
-- [laughing] → Natural laughter sounds
-- [sighing] → Breath sounds
-- [surprised] → Vocal emphasis
-- Other emotions → Voice modulation
-
 📁 Individual Files:
 - Location: ~/Desktop/podcast_output/
-- Files include emotion tags in names
+- Segments: {len(segment_files)} files
 
-🎧 Your emotionally aware podcast is ready!
+🎧 Your podcast is ready with {unique_voices_used} different voices for natural conversation!
 """
                     
                     return [types.TextContent(
@@ -1321,8 +1129,8 @@ async def run():
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="podcast-generator-enhanced-emotions",
-                server_version="3.0.0",
+                server_name="podcast-generator-enhanced-fixed",
+                server_version="2.1.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
