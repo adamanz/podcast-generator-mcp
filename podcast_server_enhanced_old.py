@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Enhanced Podcast Generator MCP Server - Fixed Version
-With robust script parsing and guaranteed different voices
+Enhanced Podcast Generator MCP Server
+With advanced voice options and better prompting for LLMs
 """
 
 import json
 import logging
 import os
 import random
-import re
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 from datetime import datetime
 
 import mcp.types as types
@@ -108,222 +107,20 @@ VOICE_PERSONALITIES = {
 }
 
 
-# Default voice pool for diversity
-DEFAULT_VOICE_POOL = [
-    {"name": "nova", "gender": "female", "personality": "warm_engaging", "age": "young_adult"},
-    {"name": "aria", "gender": "female", "personality": "contemplative", "age": "adult"},
-    {"name": "sarah", "gender": "female", "personality": "authoritative", "age": "adult"},
-    {"name": "laura", "gender": "female", "personality": "warm_engaging", "age": "middle_aged"},
-    {"name": "josh", "gender": "male", "personality": "energetic", "age": "young_adult"},
-    {"name": "adam", "gender": "male", "personality": "analytical", "age": "adult"},
-    {"name": "brian", "gender": "male", "personality": "authoritative", "age": "middle_aged"},
-    {"name": "onyx", "gender": "male", "personality": "skeptical", "age": "adult"},
-    {"name": "fable", "gender": "neutral", "personality": "warm_engaging", "age": "adult"},
-    {"name": "shimmer", "gender": "female", "personality": "contemplative", "age": "young_adult"}
-]
-
-
-def parse_script_robust(script: str) -> List[Dict[str, str]]:
-    """
-    Robustly parse various script formats into dialogue segments.
-    Handles markdown, plain text, and various formatting styles.
-    """
-    dialogue_segments = []
-    
-    # Remove markdown formatting
-    script = re.sub(r'\*\*([^*]+)\*\*', r'\1', script)  # Bold
-    script = re.sub(r'\*([^*]+)\*', r'\1', script)      # Italic
-    script = re.sub(r'#{1,6}\s*', '', script)           # Headers
-    script = re.sub(r'```[^`]*```', '', script)         # Code blocks
-    script = re.sub(r'`([^`]+)`', r'\1', script)        # Inline code
-    
-    # Split into lines and process
-    lines = script.split('\n')
-    current_speaker = None
-    current_text = []
-    
-    for line in lines:
-        line = line.strip()
-        
-        # Skip empty lines and separators
-        if not line or line == '---' or line.startswith('==='):
-            continue
-            
-        # Try to detect speaker patterns
-        # Pattern 1: "Speaker: Text"
-        speaker_match = re.match(r'^([A-Za-z\s\-\'\.]+?)(?:\s*\[([^\]]+)\])?\s*:\s*(.+)$', line)
-        
-        if speaker_match:
-            # Save previous segment if exists
-            if current_speaker and current_text:
-                dialogue_segments.append({
-                    'speaker': current_speaker['name'],
-                    'text': ' '.join(current_text),
-                    'emotion': current_speaker.get('emotion', 'neutral')
-                })
-                current_text = []
-            
-            # Start new segment
-            speaker_name = speaker_match.group(1).strip()
-            emotion = speaker_match.group(2) if speaker_match.group(2) else 'neutral'
-            text = speaker_match.group(3).strip()
-            
-            current_speaker = {
-                'name': speaker_name,
-                'emotion': emotion.lower()
-            }
-            current_text = [text] if text else []
-        
-        # Pattern 2: Continuation of previous speaker's text
-        elif current_speaker and line:
-            current_text.append(line)
-    
-    # Don't forget the last segment
-    if current_speaker and current_text:
-        dialogue_segments.append({
-            'speaker': current_speaker['name'],
-            'text': ' '.join(current_text),
-            'emotion': current_speaker.get('emotion', 'neutral')
-        })
-    
-    # If no segments found, try alternative parsing
-    if not dialogue_segments:
-        # Try to split by double newlines
-        paragraphs = script.split('\n\n')
-        for i, para in enumerate(paragraphs):
-            para = para.strip()
-            if para:
-                # Assign alternating speakers
-                speaker = "Speaker 1" if i % 2 == 0 else "Speaker 2"
-                dialogue_segments.append({
-                    'speaker': speaker,
-                    'text': para,
-                    'emotion': 'neutral'
-                })
-    
-    return dialogue_segments
-
-
-def ensure_different_voices(speakers: List[str], available_voices: List[Dict]) -> Dict[str, Tuple[str, str]]:
-    """
-    Ensure each speaker gets a different voice.
-    Returns dict of {speaker: (voice_id, voice_name)}
-    """
-    voice_assignments = {}
-    used_voices = set()
-    
-    # Shuffle voices for variety
-    voice_pool = available_voices.copy()
-    random.shuffle(voice_pool)
-    
-    for i, speaker in enumerate(speakers):
-        # Find an unused voice
-        voice_found = False
-        
-        # First, try to match by role/personality
-        speaker_lower = speaker.lower()
-        for voice in voice_pool:
-            if voice['name'] not in used_voices:
-                personality = voice.get('personality', '')
-                
-                # Match voice to speaker role
-                if (('host' in speaker_lower or 'moderator' in speaker_lower) and 
-                    personality == 'warm_engaging'):
-                    voice_assignments[speaker] = (voice['name'], voice['name'].title())
-                    used_voices.add(voice['name'])
-                    voice_found = True
-                    break
-                elif (('expert' in speaker_lower or 'professor' in speaker_lower or 
-                       'doctor' in speaker_lower or 'analyst' in speaker_lower) and 
-                      personality in ['authoritative', 'analytical']):
-                    voice_assignments[speaker] = (voice['name'], voice['name'].title())
-                    used_voices.add(voice['name'])
-                    voice_found = True
-                    break
-                elif (('comedian' in speaker_lower or 'comic' in speaker_lower) and 
-                      personality == 'energetic'):
-                    voice_assignments[speaker] = (voice['name'], voice['name'].title())
-                    used_voices.add(voice['name'])
-                    voice_found = True
-                    break
-        
-        # If no role match, just pick next available
-        if not voice_found:
-            for voice in voice_pool:
-                if voice['name'] not in used_voices:
-                    voice_assignments[speaker] = (voice['name'], voice['name'].title())
-                    used_voices.add(voice['name'])
-                    voice_found = True
-                    break
-        
-        # If we run out of voices, start reusing but try to maintain variety
-        if not voice_found:
-            # Pick the least recently used voice
-            for voice in voice_pool:
-                if voice['name'] not in [v[0] for v in list(voice_assignments.values())[-2:]]:
-                    voice_assignments[speaker] = (voice['name'], voice['name'].title())
-                    break
-            else:
-                # Fallback: just use next voice in rotation
-                voice = voice_pool[i % len(voice_pool)]
-                voice_assignments[speaker] = (voice['name'], voice['name'].title())
-    
-    return voice_assignments
-
-
-def add_speaker_introductions(dialogue_segments: List[Dict[str, str]], voice_assignments: Dict[str, Tuple[str, str]]) -> List[Dict[str, str]]:
-    """
-    Add natural speaker introductions at the beginning of the podcast.
-    """
-    intro_segments = []
-    speakers = list(set(seg['speaker'] for seg in dialogue_segments))
-    
-    # Check if script already has introductions
-    first_few_texts = ' '.join([seg['text'].lower() for seg in dialogue_segments[:5]])
-    has_intro = any(phrase in first_few_texts for phrase in ['my name is', "i'm your host", 'welcome to', 'this is'])
-    
-    if not has_intro and len(speakers) > 1:
-        # Add natural introductions
-        if 'Host' in speakers or 'Moderator' in speakers:
-            host = 'Host' if 'Host' in speakers else 'Moderator'
-            intro_segments.append({
-                'speaker': host,
-                'text': "Hello everyone, and welcome to today's podcast! I'm your host, and I'm thrilled to be here with some amazing guests.",
-                'emotion': 'warm'
-            })
-            
-            # Introduce other speakers
-            for speaker in speakers:
-                if speaker not in ['Host', 'Moderator']:
-                    if 'Expert' in speaker or 'Guest' in speaker:
-                        intro_segments.append({
-                            'speaker': speaker,
-                            'text': f"Thanks for having me! I'm excited to share my insights with your listeners today.",
-                            'emotion': 'friendly'
-                        })
-                    elif 'Panelist' in speaker:
-                        intro_segments.append({
-                            'speaker': speaker,
-                            'text': f"Great to be here! Looking forward to our discussion.",
-                            'emotion': 'enthusiastic'
-                        })
-        else:
-            # For formats without a clear host
-            intro_segments.append({
-                'speaker': speakers[0],
-                'text': "Welcome everyone! Let's dive right into our discussion.",
-                'emotion': 'warm'
-            })
-    
-    # Prepend introductions to dialogue
-    return intro_segments + dialogue_segments
-
-
 def get_enhanced_voice_options():
     """Get enhanced voice options including ElevenLabs features"""
     return {
         "elevenlabs_voices": {
-            "default_voices": DEFAULT_VOICE_POOL,
+            "default_voices": [
+                {"id": "nova", "personality": "warm_engaging", "gender": "female", "age": "young_adult"},
+                {"id": "aria", "personality": "contemplative", "gender": "female", "age": "adult"},
+                {"id": "sarah", "personality": "authoritative", "gender": "female", "age": "adult"},
+                {"id": "laura", "personality": "warm_engaging", "gender": "female", "age": "middle_aged"},
+                {"id": "josh", "personality": "energetic", "gender": "male", "age": "young_adult"},
+                {"id": "adam", "personality": "analytical", "gender": "male", "age": "adult"},
+                {"id": "brian", "personality": "authoritative", "gender": "male", "age": "middle_aged"},
+                {"id": "william shanks", "personality": "skeptical", "gender": "male", "age": "senior"}
+            ],
             "voice_design_prompts": [
                 "Young enthusiastic tech podcaster with Silicon Valley accent",
                 "Wise storyteller with gentle Southern drawl",
@@ -342,10 +139,7 @@ def get_enhanced_voice_options():
                 "warm": {"stability": 0.5, "similarity_boost": 0.6, "style": 0.6},
                 "contemplative": {"stability": 0.6, "similarity_boost": 0.4, "style": 0.4},
                 "urgent": {"stability": 0.4, "similarity_boost": 0.8, "style": 0.7},
-                "casual": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5},
-                "friendly": {"stability": 0.5, "similarity_boost": 0.6, "style": 0.6},
-                "enthusiastic": {"stability": 0.4, "similarity_boost": 0.7, "style": 0.7},
-                "neutral": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5}
+                "casual": {"stability": 0.5, "similarity_boost": 0.5, "style": 0.5}
             }
         }
     }
@@ -410,18 +204,11 @@ Speaker {i+1} - {speaker['role']}:
     
     prompt += f"""
 
-IMPORTANT FORMATTING RULES:
-1. Each line of dialogue MUST start with the speaker name followed by a colon
-2. Use simple format: "Speaker Name: Dialogue text"
-3. Optionally add emotions in brackets: "Speaker Name [emotion]: Dialogue text"
-4. Do NOT use markdown formatting (no **, *, #, etc.)
-5. Speakers should introduce themselves naturally early in the conversation
-
 CONTENT STRUCTURE:
 1. INTRODUCTION ({segments['intro']} minute):
-   - Natural speaker introductions (names/roles if appropriate)
    - Hook the audience with an intriguing opening
    - Introduce the topic and why it matters now
+   - Quick speaker introductions that feel natural
    
 2. MAIN CONTENT ({segments['main_content']} minutes):
    - Develop {max(3, duration_minutes // 2)} key points or story beats
@@ -443,15 +230,20 @@ DIALOGUE REQUIREMENTS:
 - Vary sentence length and structure for each speaker
 - Use contemporary references and relatable examples
 
-FORMAT EACH LINE EXACTLY AS:
-Speaker Name: Dialogue text
-OR
-Speaker Name [emotion]: Dialogue text
+TOPIC-SPECIFIC ELEMENTS TO EXPLORE:
+- Current relevance and recent developments
+- Common misconceptions to address
+- Surprising facts or counterintuitive insights
+- Personal experiences or case studies
+- Future implications or predictions
+- Practical applications for listeners
+
+FORMAT EACH LINE AS:
+[SPEAKER_ROLE]: [Dialogue with natural speech patterns and appropriate emotion]
 
 Example:
-Host: Welcome everyone to today's show! I'm incredibly excited about our topic.
-Expert [laughing]: Thanks for having me! You know, I was just thinking about this yesterday.
-Host [curious]: Really? What sparked that thought?
+Host: [laughing] I can't believe that actually happened! So wait, you're telling me...
+Expert: Yeah, I know it sounds crazy, but the data is clear. We found that...
 
 Remember to make this feel like a real conversation, not a scripted reading. Include moments of genuine curiosity, surprise, humor, and insight that would naturally occur when intelligent people discuss {topic}.
 """
@@ -506,6 +298,7 @@ def parse_voice_library_search(query: str) -> Dict[str, Any]:
     
     return search_params
 
+
 @server.list_resources()
 async def list_resources() -> list[types.Resource]:
     """List available resources."""
@@ -543,53 +336,151 @@ async def read_resource(uri: types.AnyUrl) -> str:
     elif str(uri) == "podcast://prompt-guide":
         guide = """# Enhanced Podcast Generator Prompting Guide
 
-## Key Fixes in This Version
+## Overview
+This enhanced podcast generator uses sophisticated prompting to help LLMs create natural, engaging podcast scripts.
 
-### 1. Voice Diversity Guaranteed
-- Each speaker automatically gets a different voice
-- Intelligent role-based voice matching
-- Fallback system ensures variety even with many speakers
+## Key Improvements
 
-### 2. Robust Script Parsing
-- Handles markdown formatting
-- Supports multiple dialogue formats
-- Removes formatting artifacts
-- Fallback parsing for edge cases
+### 1. Format-Specific Templates
+Choose from multiple podcast formats:
+- **Interview**: Classic Q&A with expert guests
+- **Debate**: Balanced discussion of opposing viewpoints  
+- **Storytelling**: Narrative-driven content
+- **Educational**: Teaching-focused explanations
+- **Comedy**: Entertainment with humor
+- **News Analysis**: Current events discussion
+- **Roundtable**: Multi-person collaborative discussion
 
-### 3. Automatic Introductions
-- Speakers introduce themselves naturally
-- Only added if not already present
-- Context-appropriate greetings
+### 2. Voice Personality Matching
+Each speaker is assigned a personality profile:
+- **Authoritative**: Confident experts and anchors
+- **Warm & Engaging**: Friendly hosts and interviewers
+- **Analytical**: Data-driven researchers
+- **Energetic**: Dynamic entertainers
+- **Contemplative**: Thoughtful philosophers
+- **Skeptical**: Critical investigators
 
-## Script Format Requirements
+### 3. Natural Dialogue Elements
+Scripts now include:
+- Verbal fillers (um, uh) for realism
+- Interruptions and overlapping speech
+- Emotional reactions (laughter, surprise)
+- Personality-specific word choices
+- Natural conversation flow
 
-Use this simple format for best results:
+### 4. Enhanced Voice Options
+- Access to ElevenLabs voice library
+- Voice design for custom characters
+- Emotional voice settings
+- Multi-language support
+- Sound effects integration
+
+## Usage Examples
+
+### Basic Interview
 ```
-Host: Welcome to our show!
-Guest [excited]: Thanks for having me!
-Host [curious]: Tell us about your work.
+generate_enhanced_script(
+    topic="The Future of AI",
+    format_type="interview",
+    duration_minutes=10,
+    num_speakers=2
+)
 ```
 
-The parser handles:
-- "Speaker: Text" format
-- "Speaker [emotion]: Text" format
-- Multi-line dialogue
-- Various punctuation styles
+### Dynamic Debate
+```
+generate_enhanced_script(
+    topic="Remote Work vs Office Culture",
+    format_type="debate",
+    duration_minutes=15,
+    num_speakers=3,
+    additional_context={
+        "stance_1": "Remote work maximizes productivity",
+        "stance_2": "Office culture drives innovation"
+    }
+)
+```
 
-## Voice Assignment
+### Narrative Podcast
+```
+generate_enhanced_script(
+    topic="The Mystery of the Missing Startup Funds",
+    format_type="storytelling",
+    duration_minutes=20,
+    num_speakers=4,
+    additional_context={
+        "genre": "tech thriller",
+        "setting": "Silicon Valley startup"
+    }
+)
+```
 
-Voices are automatically assigned based on:
-1. Speaker role (Host → warm voice, Expert → authoritative)
-2. Gender diversity
-3. Age variation
-4. Personality matching
+## Voice Selection Tips
+
+### For Professional Content
+- Use authoritative voices for experts
+- Warm, engaging voices for hosts
+- Clear, neutral accents for wide appeal
+
+### For Entertainment
+- Energetic voices for comedy
+- Varied accents for character distinction
+- Emotional range for storytelling
+
+### For Educational Content
+- Clear, measured voices for instruction
+- Friendly tones for accessibility
+- Consistent pacing for comprehension
+
+## Advanced Features
+
+### Voice Library Search
+```
+search_voices("young female british narrator audiobook")
+search_voices("deep male voice podcast host american")
+```
+
+### Voice Design
+```
+design_voice(
+    description="Wise elderly professor with slight German accent, warm but authoritative",
+    sample_text="Let me tell you about the quantum realm..."
+)
+```
+
+### Emotional Variations
+Apply emotional presets to any voice:
+- Excited: High energy discussions
+- Serious: Important topics
+- Warm: Personal stories
+- Contemplative: Deep thoughts
+- Urgent: Breaking news
+- Casual: Relaxed conversations
 
 ## Best Practices
 
-1. Keep speaker names consistent
-2. Use emotions in brackets for variety
-3. Let speakers introduce themselves naturally
-4. Avoid markdown formatting in scripts
+1. **Match Format to Content**: Choose the right format for your topic
+2. **Consider Audience**: Adjust tone and complexity accordingly
+3. **Use Natural Pacing**: Vary segment lengths for engagement
+4. **Add Context**: Provide additional details for better scripts
+5. **Experiment with Voices**: Try different combinations for best results
+
+## Troubleshooting
+
+### Scripts Too Formal?
+- Use comedy or roundtable formats
+- Add casual personality types
+- Include more verbal fillers
+
+### Lacking Emotion?
+- Apply emotional presets to voices
+- Use storytelling format
+- Add emotional context in prompts
+
+### Need More Depth?
+- Increase duration
+- Use educational or debate formats
+- Provide detailed additional context
 """
         return guide.strip()
     
@@ -715,7 +606,6 @@ async def list_tools() -> list[types.Tool]:
         )
     ]
 
-
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.TextContent]:
     """Handle tool calls."""
@@ -752,12 +642,7 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.T
 {prompt}
 
 ---
-Note: This prompt is optimized for advanced LLMs like Claude or GPT-4. The LLM should generate a natural, engaging podcast script based on this prompt. The script will include realistic dialogue, personality-driven speaking styles, and format-appropriate content structure.
-
-IMPORTANT: The generated script should use simple formatting:
-- Each line: "Speaker Name: Dialogue"
-- With emotions: "Speaker Name [emotion]: Dialogue"
-- No markdown formatting"""
+Note: This prompt is optimized for advanced LLMs like Claude or GPT-4. The LLM should generate a natural, engaging podcast script based on this prompt. The script will include realistic dialogue, personality-driven speaking styles, and format-appropriate content structure."""
         )]
 
     elif name == "create_enhanced_audio":
@@ -769,7 +654,7 @@ IMPORTANT: The generated script should use simple formatting:
             )]
         
         output_filename = arguments.get("output_filename", "enhanced_podcast.mp3")
-        manual_voice_assignments = arguments.get("voice_assignments", {})
+        voice_assignments = arguments.get("voice_assignments", {})
         auto_assign_voices = arguments.get("auto_assign_voices", True)
         include_sound_effects = arguments.get("include_sound_effects", False)
         
@@ -789,123 +674,103 @@ IMPORTANT: The generated script should use simple formatting:
                 
                 client = ElevenLabs(api_key=elevenlabs_key)
                 
-                # Get available voices from ElevenLabs
-                voices_response = client.voices.get_all()
-                available_voices = voices_response.voices
-                
-                # Create voice name to ID mapping
-                voice_name_to_id = {v.name.lower(): v.voice_id for v in available_voices}
-                
-                # Parse script with robust parser
-                dialogue_segments = parse_script_robust(script)
-                
-                if not dialogue_segments:
-                    return [types.TextContent(
-                        type="text",
-                        text="Error: No valid dialogue segments found in script. Please check the format."
-                    )]
-                
-                # Get unique speakers
-                unique_speakers = list(set(seg['speaker'] for seg in dialogue_segments))
-                
-                # Build voice assignments ensuring diversity
-                final_voice_assignments = {}
-                
-                if auto_assign_voices:
-                    # Create a mapping of available voices with their characteristics
-                    elevenlabs_voice_pool = []
-                    
-                    # Try to map ElevenLabs voices to our personality profiles
-                    for voice in available_voices:
-                        voice_name_lower = voice.name.lower()
-                        
-                        # Try to find matching voice from our default pool
-                        matched = False
-                        for default_voice in DEFAULT_VOICE_POOL:
-                            if default_voice['name'] in voice_name_lower:
-                                elevenlabs_voice_pool.append({
-                                    'name': voice.name,
-                                    'id': voice.voice_id,
-                                    'gender': default_voice.get('gender', 'neutral'),
-                                    'personality': default_voice.get('personality', 'neutral'),
-                                    'age': default_voice.get('age', 'adult')
-                                })
-                                matched = True
-                                break
-                        
-                        # If no match, add as generic voice
-                        if not matched:
-                            elevenlabs_voice_pool.append({
-                                'name': voice.name,
-                                'id': voice.voice_id,
-                                'gender': 'neutral',
-                                'personality': 'neutral',
-                                'age': 'adult'
-                            })
-                    
-                    # Ensure different voices for each speaker
-                    voice_assignments = ensure_different_voices(
-                        unique_speakers, 
-                        elevenlabs_voice_pool[:20]  # Use first 20 voices for variety
-                    )
-                    
-                    # Convert to final assignments with IDs
-                    for speaker, (voice_name, display_name) in voice_assignments.items():
-                        # Find the actual voice ID
-                        voice_id = None
-                        for v in elevenlabs_voice_pool:
-                            if v['name'].lower() == voice_name.lower():
-                                voice_id = v['id']
-                                break
-                        
-                        if voice_id:
-                            final_voice_assignments[speaker] = {
-                                'id': voice_id,
-                                'name': display_name
-                            }
-                
-                # Apply manual overrides
-                for speaker, assignment in manual_voice_assignments.items():
-                    if assignment in voice_name_to_id:
-                        final_voice_assignments[speaker] = {
-                            'id': voice_name_to_id[assignment],
-                            'name': assignment
-                        }
-                    else:
-                        # Try to find by partial match
-                        for voice_name, voice_id in voice_name_to_id.items():
-                            if assignment.lower() in voice_name:
-                                final_voice_assignments[speaker] = {
-                                    'id': voice_id,
-                                    'name': voice_name
-                                }
-                                break
-                
-                # Ensure all speakers have assignments
-                for speaker in unique_speakers:
-                    if speaker not in final_voice_assignments:
-                        # Assign first available voice not yet used
-                        used_ids = {v['id'] for v in final_voice_assignments.values()}
-                        for voice in available_voices:
-                            if voice.voice_id not in used_ids:
-                                final_voice_assignments[speaker] = {
-                                    'id': voice.voice_id,
-                                    'name': voice.name
-                                }
-                                break
-                
-                # Add speaker introductions if needed
-                dialogue_segments = add_speaker_introductions(dialogue_segments, final_voice_assignments)
+                # Get available voices
+                voices = client.voices.get_all()
+                voice_map = {v.name.lower(): v.voice_id for v in voices.voices}
                 
                 # Create output directory
                 output_dir = os.path.expanduser("~/Desktop/podcast_output")
                 os.makedirs(output_dir, exist_ok=True)
                 
-                # Generate audio segments
+                # Parse script into dialogue segments with enhanced emotion detection
+                dialogue_segments = []
+                lines = script.split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line or line.startswith('#') or line.startswith('*') or line == '---':
+                        continue
+                    
+                    # Enhanced speaker pattern detection
+                    if ':' in line:
+                        parts = line.split(':', 1)
+                        if len(parts) == 2:
+                            speaker = parts[0].strip()
+                            text = parts[1].strip()
+                            
+                            # Remove emotion indicators like [laughing], [surprised], etc.
+                            emotion = "neutral"
+                            if '[' in speaker and ']' in speaker:
+                                emotion_match = speaker[speaker.find('[')+1:speaker.find(']')]
+                                emotion = emotion_match.lower()
+                                speaker = speaker[:speaker.find('[')].strip()
+                            
+                            if text:
+                                dialogue_segments.append({
+                                    'speaker': speaker,
+                                    'text': text,
+                                    'emotion': emotion
+                                })
+                
+                if not dialogue_segments:
+                    return [types.TextContent(
+                        type="text",
+                        text="Error: No valid dialogue segments found in script"
+                    )]
+                
+                # Enhanced voice assignment logic
+                unique_speakers = list(set(seg['speaker'] for seg in dialogue_segments))
+                final_voice_assignments = {}
+                
+                if auto_assign_voices:
+                    # Get diverse voices based on the voice options
+                    voice_options = get_enhanced_voice_options()
+                    default_voices = voice_options["elevenlabs_voices"]["default_voices"]
+                    
+                    # Try to match speakers to appropriate voices
+                    for i, speaker in enumerate(unique_speakers):
+                        speaker_lower = speaker.lower()
+                        
+                        # Check manual assignments first
+                        if speaker in voice_assignments:
+                            # Could be a voice ID or a description for voice design
+                            assignment = voice_assignments[speaker]
+                            if assignment in voice_map:
+                                final_voice_assignments[speaker] = voice_map[assignment]
+                            else:
+                                # Treat as voice design description
+                                final_voice_assignments[speaker] = f"design:{assignment}"
+                        else:
+                            # Auto-assign based on role and available voices
+                            assigned = False
+                            
+                            # Try to match based on role keywords
+                            for voice_data in default_voices:
+                                voice_name = voice_data["id"]
+                                if voice_name in voice_map:
+                                    personality = voice_data["personality"]
+                                    
+                                    # Match based on speaker role
+                                    if ("host" in speaker_lower and personality == "warm_engaging") or \
+                                       ("expert" in speaker_lower and personality == "authoritative") or \
+                                       ("analyst" in speaker_lower and personality == "analytical") or \
+                                       ("reporter" in speaker_lower and personality == "authoritative"):
+                                        final_voice_assignments[speaker] = voice_map[voice_name]
+                                        assigned = True
+                                        break
+                            
+                            # If no role match, assign diversely
+                            if not assigned and i < len(default_voices):
+                                voice_name = default_voices[i]["id"]
+                                if voice_name in voice_map:
+                                    final_voice_assignments[speaker] = voice_map[voice_name]
+                                else:
+                                    # Fallback to first available voice
+                                    final_voice_assignments[speaker] = voices.voices[0].voice_id
+                
+                # Generate audio segments with enhanced emotional control
                 audio_segments = []
                 segment_files = []
-                
-                logger.info(f"Generating {len(dialogue_segments)} audio segments...")
                 
                 for i, segment in enumerate(dialogue_segments):
                     speaker = segment['speaker']
@@ -913,40 +778,45 @@ IMPORTANT: The generated script should use simple formatting:
                     emotion = segment.get('emotion', 'neutral')
                     
                     # Get voice for this speaker
-                    voice_info = final_voice_assignments.get(speaker, {
-                        'id': available_voices[0].voice_id,
-                        'name': available_voices[0].name
-                    })
+                    speaker_voice_id = final_voice_assignments.get(speaker, voices.voices[0].voice_id)
+                    
+                    # Handle voice design requests
+                    if isinstance(speaker_voice_id, str) and speaker_voice_id.startswith("design:"):
+                        # This would require voice design API call
+                        # For now, fallback to default voice
+                        speaker_voice_id = voices.voices[0].voice_id
                     
                     # Get emotional settings
                     emotion_presets = get_enhanced_voice_options()["voice_settings"]["emotional_presets"]
                     
-                    # Use emotion from segment or detect from text
+                    # Enhanced emotion detection
                     if emotion in emotion_presets:
                         voice_settings = emotion_presets[emotion]
                     elif '!' in text and '?' not in text:
                         voice_settings = emotion_presets["excited"]
-                    elif '?' in text:
+                    elif '?' in text and any(word in text.lower() for word in ['how', 'why', 'what', 'when', 'where']):
                         voice_settings = emotion_presets["contemplative"]
-                    elif any(phrase in text.lower() for phrase in ['thank', 'welcome', 'great to']):
+                    elif any(phrase in text.lower() for phrase in ['breaking', 'urgent', 'just in', 'alert']):
+                        voice_settings = emotion_presets["urgent"]
+                    elif any(phrase in text.lower() for phrase in ['thank', 'appreciate', 'wonderful', 'great']):
                         voice_settings = emotion_presets["warm"]
+                    elif any(phrase in text.lower() for phrase in ['research', 'data', 'studies', 'evidence']):
+                        voice_settings = emotion_presets["serious"]
                     else:
                         voice_settings = emotion_presets["casual"]
                     
                     # Generate audio for this segment
                     try:
-                        logger.info(f"Generating segment {i+1}/{len(dialogue_segments)}: {speaker} ({voice_info['name']})")
-                        
                         segment_audio = client.text_to_speech.convert(
                             text=text,
-                            voice_id=voice_info['id'],
+                            voice_id=speaker_voice_id,
                             voice_settings=VoiceSettings(
                                 stability=voice_settings["stability"],
                                 similarity_boost=voice_settings["similarity_boost"],
                                 style=voice_settings.get("style", 0.5),
                                 use_speaker_boost=True
                             ),
-                            model_id="eleven_turbo_v2_5"
+                            model_id="eleven_turbo_v2_5"  # Using the turbo model for speed
                         )
                         
                         # Save individual segment
@@ -958,10 +828,18 @@ IMPORTANT: The generated script should use simple formatting:
                                 f.write(chunk)
                         
                         segment_files.append(segment_path)
+                        
+                        # Find actual voice name
+                        voice_name = "Custom"
+                        for v in voices.voices:
+                            if v.voice_id == speaker_voice_id:
+                                voice_name = v.name
+                                break
+                        
                         audio_segments.append({
                             'speaker': speaker,
-                            'voice': voice_info['name'],
-                            'emotion': emotion,
+                            'voice': voice_name,
+                            'emotion': emotion if emotion != "neutral" else voice_settings,
                             'file': segment_path,
                             'text_length': len(text)
                         })
@@ -972,16 +850,42 @@ IMPORTANT: The generated script should use simple formatting:
                 
                 # Add sound effects if requested
                 if include_sound_effects and len(segment_files) > 0:
+                    # Generate intro/outro sound effects
                     try:
-                        # Note: Sound effects generation would go here
-                        # For now, we'll skip this as it requires additional API
-                        pass
+                        # Intro sound
+                        intro_audio = client.text_to_sound_effects.convert(
+                            text="Podcast intro jingle with upbeat music fade in",
+                            duration_seconds=3.0,
+                            prompt_influence=0.3
+                        )
+                        
+                        intro_path = os.path.join(output_dir, "intro_music.mp3")
+                        with open(intro_path, "wb") as f:
+                            for chunk in intro_audio:
+                                f.write(chunk)
+                        
+                        # Outro sound
+                        outro_audio = client.text_to_sound_effects.convert(
+                            text="Podcast outro music with gentle fade out",
+                            duration_seconds=3.0,
+                            prompt_influence=0.3
+                        )
+                        
+                        outro_path = os.path.join(output_dir, "outro_music.mp3")
+                        with open(outro_path, "wb") as f:
+                            for chunk in outro_audio:
+                                f.write(chunk)
+                        
+                        # Add to segments list
+                        segment_files.insert(0, intro_path)
+                        segment_files.append(outro_path)
+                        
                     except Exception as sfx_error:
                         logger.warning(f"Could not generate sound effects: {str(sfx_error)}")
                 
                 # Combine audio segments
                 if segment_files:
-                    # Simple concatenation
+                    # Simple concatenation (would need proper audio library for crossfades)
                     combined_audio_data = b""
                     
                     for segment_file in segment_files:
@@ -996,42 +900,55 @@ IMPORTANT: The generated script should use simple formatting:
                     with open(output_path, "wb") as f:
                         f.write(combined_audio_data)
                     
-                    # Generate voice cast summary
-                    voice_cast = {}
-                    for speaker, voice_info in final_voice_assignments.items():
-                        voice_cast[speaker] = voice_info['name']
+                    # Generate detailed report
+                    speakers_info = []
+                    emotion_summary = {}
                     
-                    # Count unique voices used
-                    unique_voices_used = len(set(v['id'] for v in final_voice_assignments.values()))
+                    for segment in audio_segments:
+                        speaker_emotion = f"{segment['emotion']}" if isinstance(segment['emotion'], str) else "dynamic"
+                        speakers_info.append(f"  • {segment['speaker']}: {segment['voice']} voice ({speaker_emotion} tone, {segment['text_length']} chars)")
+                        
+                        if speaker_emotion not in emotion_summary:
+                            emotion_summary[speaker_emotion] = 0
+                        emotion_summary[speaker_emotion] += 1
+                    
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
                     result_message = f"""
 ✅ Enhanced podcast created successfully!
 
-📁 Output: {output_path}
+📅 Generated: {timestamp}
+📁 Output Location: {output_path}
 
-🎭 Voice Cast ({unique_voices_used} different voices):
-{chr(10).join([f"  • {speaker}: {voice}" for speaker, voice in voice_cast.items()])}
-
-📊 Statistics:
+📊 Podcast Statistics:
 - Total Segments: {len(audio_segments)}
-- Estimated Duration: ~{sum(seg['text_length'] for seg in audio_segments) // 150} minutes
+- Duration: ~{sum(seg['text_length'] for seg in audio_segments) // 150} minutes (estimated)
 - File Size: {os.path.getsize(output_path) / 1024 / 1024:.1f} MB
+- Sound Effects: {"✅ Included" if include_sound_effects else "❌ Not included"}
 
-📁 Individual Files:
+🎭 Voice Cast & Performance:
+{chr(10).join(speakers_info)}
+
+🎨 Emotional Tone Distribution:
+{chr(10).join([f"  • {emotion}: {count} segments" for emotion, count in emotion_summary.items()])}
+
+📁 Project Files:
+- Combined podcast: {output_filename}
+- Individual segments: {len(segment_files)} files
 - Location: ~/Desktop/podcast_output/
-- Segments: {len(segment_files)} files
 
-🎧 Your podcast is ready with {unique_voices_used} different voices for natural conversation!
+💡 Enhancement Tips:
+1. Use an audio editor for professional transitions
+2. Adjust pacing with silence between segments
+3. Add background music for atmosphere
+4. Apply compression for consistent volume
+
+🎧 Your enhanced podcast is ready with natural dialogue and emotional depth!
 """
                     
                     return [types.TextContent(
                         type="text",
                         text=result_message.strip()
-                    )]
-                else:
-                    return [types.TextContent(
-                        type="text",
-                        text="Error: No audio segments were generated. Please check the script format."
                     )]
                 
             except ImportError:
@@ -1043,7 +960,7 @@ IMPORTANT: The generated script should use simple formatting:
         except Exception as e:
             return [types.TextContent(
                 type="text",
-                text=f"Error creating audio: {str(e)}\n\nPlease check your script format and try again."
+                text=f"Error creating audio: {str(e)}"
             )]
 
     elif name == "search_voices":
@@ -1053,7 +970,8 @@ IMPORTANT: The generated script should use simple formatting:
         # Parse the natural language query
         search_params = parse_voice_library_search(query)
         
-        # Mock response for demonstration
+        # In a real implementation, this would call the ElevenLabs API
+        # For now, return a mock response showing how it would work
         mock_results = f"""
 🔍 Voice Library Search Results for: "{query}"
 
@@ -1063,16 +981,19 @@ Search Parameters Detected:
 - Accent: {search_params.get('accent', 'any')}
 - Use Case: {search_params.get('use_case', 'any')}
 
-Available ElevenLabs Voices (use these names in voice_assignments):
-- nova: Warm, engaging female voice
-- aria: Contemplative female voice
-- sarah: Authoritative female voice
-- josh: Energetic male voice
-- adam: Analytical male voice
-- brian: Authoritative male voice
-- onyx: Deep, skeptical male voice
+Top {limit} Results:
+1. "Emma Thompson" - British female, middle-aged, perfect for audiobook narration
+2. "Marcus Chen" - American male, young adult, energetic podcast host
+3. "Sophia Rivera" - Spanish-accented female, warm and engaging
+4. "James MacLeod" - Scottish male, authoritative narrator
+5. "Aisha Patel" - Indian-accented female, clear educational content
 
-💡 Usage: Add to voice_assignments parameter in create_enhanced_audio
+💡 To use these voices:
+- Add them to your voice library in ElevenLabs
+- Reference by name in voice_assignments
+- Or use voice IDs directly in the create_enhanced_audio tool
+
+Note: This is a mock response. Real implementation would search the actual ElevenLabs voice library.
 """
         
         return [types.TextContent(
@@ -1098,7 +1019,7 @@ Available ElevenLabs Voices (use these names in voice_assignments):
                 text="Error: Sample text must be between 100 and 1000 characters"
             )]
         
-        # Mock response
+        # In a real implementation, this would call the ElevenLabs Voice Design API
         mock_response = f"""
 🎨 Voice Design Preview
 
@@ -1106,8 +1027,21 @@ Available ElevenLabs Voices (use these names in voice_assignments):
 
 🎤 Sample Text: "{sample_text[:100]}..."
 
-Note: Voice design requires ElevenLabs API integration. 
-For now, use available voices: nova, aria, sarah, josh, adam, brian, onyx
+🔧 Generating 3 voice variations...
+
+Generated Voices:
+1. Variation A - More authoritative tone
+   Preview: [Would play audio sample A]
+   
+2. Variation B - Balanced personality
+   Preview: [Would play audio sample B]
+   
+3. Variation C - Warmer, friendlier tone
+   Preview: [Would play audio sample C]
+
+💾 To save: Select your preferred variation and it will be saved as "{save_as}"
+
+Note: This is a mock response. Real implementation would use ElevenLabs Voice Design API to generate actual voice samples.
 """
         
         return [types.TextContent(
@@ -1129,8 +1063,8 @@ async def run():
             read_stream,
             write_stream,
             InitializationOptions(
-                server_name="podcast-generator-enhanced-fixed",
-                server_version="2.1.0",
+                server_name="podcast-generator-enhanced",
+                server_version="2.0.0",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
