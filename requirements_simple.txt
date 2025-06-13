@@ -1,0 +1,3 @@
+# Minimal requirements for podcast generator
+mcp>=0.9.0
+elevenlabs>=1.0.0

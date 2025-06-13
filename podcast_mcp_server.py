@@ -139,12 +139,12 @@ Important: Keep each dialogue turn concise (1-3 sentences) for natural pacing.
 Make the conversation feel authentic and engaging, like a real podcast listeners would enjoy."""
 @mcp.tool
 async def generate_podcast_script(
+    ctx: Context,
     topic: str,
     duration_minutes: int = 5,
     style: str = "conversational",
     host_personality: str = "friendly and curious", 
-    guest_personality: str = "knowledgeable and enthusiastic",
-    ctx: Context
+    guest_personality: str = "knowledgeable and enthusiastic"
 ) -> Dict:
     """
     Generate a podcast script on any topic using AI.
@@ -233,13 +233,13 @@ async def generate_audio_elevenlabs(
         return False
 @mcp.tool
 async def create_podcast_audio(
+    ctx: Context,
     script: Dict,
     host_voice: str = DEFAULT_HOST_VOICE,
     guest_voice: str = DEFAULT_GUEST_VOICE,
     output_dir: Optional[str] = None,
     add_pauses: bool = True,
-    elevenlabs_api_key: Optional[str] = None,
-    ctx: Context
+    elevenlabs_api_key: Optional[str] = None
 ) -> Dict:
     """
     Create audio files from a podcast script using ElevenLabs voices.
@@ -353,11 +353,11 @@ async def create_podcast_audio(
     }
 @mcp.tool
 async def combine_podcast_audio(
+    ctx: Context,
     podcast_data: Dict,
     output_filename: Optional[str] = None,
     normalize_audio: bool = True,
-    add_fade: bool = True,
-    ctx: Context
+    add_fade: bool = True
 ) -> str:
     """
     Combine individual audio files into a single podcast episode.
@@ -467,13 +467,13 @@ async def combine_podcast_audio(
         return ""
 @mcp.tool
 async def generate_full_podcast(
+    ctx: Context,
     topic: str,
     duration_minutes: int = 5,
     host_voice: str = DEFAULT_HOST_VOICE,
     guest_voice: str = DEFAULT_GUEST_VOICE,
     style: str = "conversational",
-    elevenlabs_api_key: Optional[str] = None,
-    ctx: Context
+    elevenlabs_api_key: Optional[str] = None
 ) -> Dict:
     """
     Generate a complete podcast from topic to final audio file.
@@ -500,20 +500,20 @@ async def generate_full_podcast(
     # Step 1: Generate script
     await ctx.info("Step 1/3: Generating script...")
     script = await generate_podcast_script(
+        ctx=ctx,
         topic=topic,
         duration_minutes=duration_minutes,
-        style=style,
-        ctx=ctx
+        style=style
     )
     
     # Step 2: Create audio files
     await ctx.info("Step 2/3: Creating audio files...")
     audio_data = await create_podcast_audio(
+        ctx=ctx,
         script=script,
         host_voice=host_voice,
         guest_voice=guest_voice,
-        elevenlabs_api_key=elevenlabs_api_key,
-        ctx=ctx
+        elevenlabs_api_key=elevenlabs_api_key
     )
     
     # Step 3: Combine audio
@@ -521,10 +521,10 @@ async def generate_full_podcast(
     if audio_data.get("has_audio", False):
         await ctx.info("Step 3/3: Combining audio files...")
         final_path = await combine_podcast_audio(
+            ctx=ctx,
             podcast_data=audio_data,
             normalize_audio=True,
-            add_fade=True,
-            ctx=ctx
+            add_fade=True
         )
     
     await ctx.info(f"✅ Podcast generation complete!")
